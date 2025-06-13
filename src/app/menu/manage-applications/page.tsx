@@ -1,17 +1,19 @@
+// src/app/menu/manage-applications/page.tsx
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getMyProfile, getRegistrationsForVacancy, updateVacancyRegistrationStatus } from '@/lib/api';
 
-type UserProfile = {
-    id: string;
-    name: string;
-    email: string;
-    description: string;
-    localization: string;
-    type: string;
-};
+// Imports de Componentes e Ícones
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ArrowLeft, MessageSquare, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Alert } from '@/components/ui/alert';
 
 type Registration = {
     id: string;
@@ -32,72 +34,68 @@ type Registration = {
     created_at: string;
 };
 
-
 export default function ManageApplicationsPage() {
     const router = useRouter();
-    const [user, setUser] = useState<UserProfile | null>(null);
     const [registrations, setRegistrations] = useState<Registration[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
+     const fetchRegistrations = async () => {
         const token = localStorage.getItem('token');
-
         if (!token) {
             router.push('/login');
-        } else {
-            const fetchData = async () => {
-                try {
-                    setLoading(true);
-                    setError(null);
-
-
-                    const profileResponse = await getMyProfile(token);
-                    if (profileResponse.ok) {
-                        const profileData = await profileResponse.json();
-                        setUser(profileData.user);
-
-
-                        if (profileData.user.type !== 'ong') {
-                            router.push('/menu');
-                            return;
-                        }
-
-
-                        const registrationsResponse = await getRegistrationsForVacancy(token);
-                        if (registrationsResponse.ok) {
-                            const registrationsData = await registrationsResponse.json();
-                            console.log('Resposta da API de candidaturas:', registrationsData);
-                            let allRegistrations: Registration[] = [];
-                            if (Array.isArray(registrationsData?.vacancies)) {
-                                registrationsData.vacancies.forEach((vacancy: { registrations: Registration[] }) => {
-                                    if (Array.isArray(vacancy?.registrations)) {
-                                        allRegistrations = allRegistrations.concat(vacancy.registrations);
-                                    }
-                                });
-                            }
-                            setRegistrations(allRegistrations);
-                        } else {
-                            throw new Error('Falha ao carregar candidaturas');
-                        }
-                    } else {
-                        throw new Error('Falha ao carregar perfil');
-                    }
-                } catch (err) {
-                    console.error('Erro ao buscar dados:', err);
-                    setError('Não foi possível carregar os dados.');
-                    localStorage.removeItem('token');
-                    router.push('/login');
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            fetchData();
+            return;
         }
+        try {
+            const registrationsResponse = await getRegistrationsForVacancy(token);
+            if (registrationsResponse.ok) {
+                const registrationsData = await registrationsResponse.json();
+                let allRegistrations: Registration[] = [];
+                if (Array.isArray(registrationsData?.vacancies)) {
+                    registrationsData.vacancies.forEach((vacancy: { registrations: Registration[] }) => {
+                        if (Array.isArray(vacancy?.registrations)) {
+                            allRegistrations = allRegistrations.concat(vacancy.registrations);
+                        }
+                    });
+                }
+                setRegistrations(allRegistrations);
+            } else {
+                throw new Error('Falha ao recarregar candidaturas');
+            }
+        } catch (err) {
+            setError('Erro ao recarregar candidaturas.');
+        }
+    };
+
+
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            router.push('/login');
+            return;
+        }
+        const initialFetch = async () => {
+            setLoading(true);
+            try {
+                const profileResponse = await getMyProfile(token);
+                if (!profileResponse.ok) throw new Error('Falha ao carregar perfil');
+                const profileData = await profileResponse.json();
+                if (profileData.user.type !== 'ong') {
+                    router.push('/menu');
+                    return;
+                }
+                await fetchRegistrations();
+            } catch (err) {
+                console.error('Erro ao buscar dados:', err);
+                setError('Não foi possível carregar os dados.');
+                localStorage.removeItem('token');
+                router.push('/login');
+            } finally {
+                setLoading(false);
+            }
+        };
+        initialFetch();
     }, [router]);
 
     const handleUpdateStatus = async (registrationId: string, status: 'accepted' | 'rejected') => {
@@ -114,20 +112,7 @@ export default function ManageApplicationsPage() {
             const response = await updateVacancyRegistrationStatus(token, registrationId, { status });
 
             if (response.ok) {
-
-                const registrationsResponse = await getRegistrationsForVacancy(token);
-                if (registrationsResponse.ok) {
-                    const registrationsData = await registrationsResponse.json();
-                    let allRegistrations: Registration[] = [];
-                    if (Array.isArray(registrationsData?.vacancies)) {
-                        registrationsData.vacancies.forEach((vacancy: { registrations: Registration[] }) => {
-                            if (Array.isArray(vacancy?.registrations)) {
-                                allRegistrations = allRegistrations.concat(vacancy.registrations);
-                            }
-                        });
-                    }
-                    setRegistrations(allRegistrations);
-                }
+                await fetchRegistrations();
             } else {
                 const errorData = await response.json();
                 setError(errorData.message || 'Erro ao atualizar status da candidatura');
@@ -140,117 +125,92 @@ export default function ManageApplicationsPage() {
     };
 
     if (loading) {
-        return <div className="p-4 text-gray-600">Carregando...</div>;
+        return <div className="flex h-screen items-center justify-center">Carregando candidaturas...</div>;
     }
 
-    if (error) {
-        return <div className="p-4 text-red-600">{error}</div>;
-    }
-
-    if (!user) {
-        return <div className="p-4 text-red-600">Usuário não encontrado.</div>;
-    }
-
-    return (
-        <div className="p-8 max-w-7xl mx-auto">
-            <div className="mb-8">
-                <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-gray-800">Gerenciar Candidaturas</h1>
-                    <button
-                        onClick={() => router.push('/menu')}
-                        className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                    >
-                        Voltar ao Menu
-                    </button>
-                </div>
-            </div>
-
-            <div className="space-y-6">
-                {registrations.length === 0 ? (
-                    <p className="text-gray-500 text-center">Nenhuma candidatura recebida.</p>
-                ) : (
-                    registrations.map((registration) => (
-                        <div
-                            key={registration.id}
-                            className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
-                        >
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="text-lg font-semibold text-gray-800">
-                                        {registration.vacancy?.position || 'Vaga não encontrada'}
-                                    </h3>
-                                    <p className="text-sm text-gray-500 mt-1">
-                                        Categoria: {registration.vacancy?.category || 'Não especificada'}
-                                    </p>
-                                </div>
-                                <span
-                                    className={`px-3 py-1 rounded-full text-sm font-medium ${registration.status === 'pending'
-                                            ? 'bg-yellow-100 text-yellow-800'
-                                            : registration.status === 'accepted'
-                                                ? 'bg-green-100 text-green-800'
-                                                : 'bg-red-100 text-red-800'
-                                        }`}
-                                >
-                                    {registration.status === 'pending'
-                                        ? 'Pendente'
-                                        : registration.status === 'accepted'
-                                            ? 'Aceita'
-                                            : 'Rejeitada'}
-                                </span>
-                            </div>
-
-                            <div className="mt-4">
-                                <h4 className="font-medium text-gray-700">Candidato</h4>
-                                <div className="mt-2 space-y-2">
-                                    <p className="text-gray-600">
-                                        <span className="font-medium">Nome:</span> {registration.user?.name || 'Não especificado'}
-                                    </p>
-                                    <p className="text-gray-600">
-                                        <span className="font-medium">Email:</span> {registration.user?.email || 'Não especificado'}
-                                    </p>
-                                    <p className="text-gray-600">
-                                        <span className="font-medium">Localização:</span>{' '}
-                                        {registration.user?.localization || 'Não especificada'}
-                                    </p>
-                                    <p className="text-gray-600">
-                                        <span className="font-medium">Descrição:</span>{' '}
-                                        {registration.user?.description || 'Não especificada'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {registration.status === 'pending' && (
-                                <div className="mt-6 flex gap-4">
-                                    <button
-                                        onClick={() => handleUpdateStatus(registration.id, 'accepted')}
-                                        disabled={updatingStatus === registration.id}
-                                        className={`flex-1 px-4 py-2 rounded-md text-white ${updatingStatus === registration.id
-                                                ? 'bg-green-400 cursor-not-allowed'
-                                                : 'bg-green-600 hover:bg-green-700'
-                                            }`}
-                                    >
-                                        {updatingStatus === registration.id
-                                            ? 'Atualizando...'
-                                            : 'Aceitar Candidatura'}
-                                    </button>
-                                    <button
-                                        onClick={() => handleUpdateStatus(registration.id, 'rejected')}
-                                        disabled={updatingStatus === registration.id}
-                                        className={`flex-1 px-4 py-2 rounded-md text-white ${updatingStatus === registration.id
-                                                ? 'bg-red-400 cursor-not-allowed'
-                                                : 'bg-red-600 hover:bg-red-700'
-                                            }`}
-                                    >
-                                        {updatingStatus === registration.id
-                                            ? 'Atualizando...'
-                                            : 'Rejeitar Candidatura'}
-                                    </button>
-                                </div>
-                            )}
+    const renderRegistrationCard = (registration: Registration) => (
+         <div key={registration.id} className="p-4 hover:bg-gray-50 border-b">
+            <div className="flex flex-col md:flex-row md:items-start gap-4">
+                <Avatar className="h-12 w-12">
+                    <AvatarFallback>{registration.user.name.substring(0, 2)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-1">
+                        <h3 className="font-medium">{registration.user.name}</h3>
+                        <span className="text-sm text-gray-500">
+                            Candidatura em {new Date(registration.created_at).toLocaleDateString()}
+                        </span>
+                    </div>
+                    <p className="text-sm text-blue-600 mb-2">
+                        Para: {registration.vacancy?.position || 'Vaga não especificada'}
+                    </p>
+                    <div className="bg-gray-50 p-3 rounded-lg mb-3">
+                        <p className="text-sm text-gray-700">{registration.user.description || 'O candidato não forneceu uma descrição.'}</p>
+                    </div>
+                    {registration.status === 'pending' && (
+                        <div className="flex flex-col md:flex-row gap-2 md:justify-end">
+                            <Button variant="outline" className="text-sm" disabled={updatingStatus === registration.id}>
+                                <MessageSquare className="h-4 w-4 mr-2" />
+                                Enviar Mensagem
+                            </Button>
+                            <Button variant="outline" className="text-red-500 border-red-200 hover:bg-red-50" onClick={() => handleUpdateStatus(registration.id, 'rejected')} disabled={updatingStatus === registration.id}>
+                                <ThumbsDown className="h-4 w-4 mr-2"/>
+                                {updatingStatus === registration.id ? 'Rejeitando...' : 'Rejeitar'}
+                            </Button>
+                            <Button className="bg-green-600 hover:bg-green-700" onClick={() => handleUpdateStatus(registration.id, 'accepted')} disabled={updatingStatus === registration.id}>
+                                <ThumbsUp className="h-4 w-4 mr-2"/>
+                                {updatingStatus === registration.id ? 'Aceitando...' : 'Aceitar'}
+                            </Button>
                         </div>
-                    ))
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
-} 
+
+    const pendingRegistrations = registrations.filter(r => r.status === 'pending');
+    const acceptedRegistrations = registrations.filter(r => r.status === 'accepted');
+    const rejectedRegistrations = registrations.filter(r => r.status === 'rejected');
+    
+    return (
+        <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+            <div className="max-w-5xl mx-auto">
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold">Gerenciamento de Candidaturas</h1>
+                        <p className="text-gray-500">Analise e gerencie as candidaturas para suas vagas.</p>
+                    </div>
+                     <Button variant="outline" onClick={() => router.push('/menu')}>
+                        <ArrowLeft className="h-4 w-4 mr-2"/>
+                        Voltar ao Dashboard
+                    </Button>
+                </div>
+                 {error && <Alert variant="destructive" className="mb-4">{error}</Alert>}
+                 <Card>
+                     <Tabs defaultValue="pendentes" className="w-full">
+                         <TabsList className="grid w-full grid-cols-3">
+                             <TabsTrigger value="pendentes">Pendentes <Badge className="ml-2">{pendingRegistrations.length}</Badge></TabsTrigger>
+                             <TabsTrigger value="aceitas">Aceitas <Badge className="ml-2">{acceptedRegistrations.length}</Badge></TabsTrigger>
+                             <TabsTrigger value="rejeitadas">Rejeitadas <Badge variant="destructive" className="ml-2">{rejectedRegistrations.length}</Badge></TabsTrigger>
+                         </TabsList>
+                         <TabsContent value="pendentes">
+                            <CardContent className='p-0'>
+                                {pendingRegistrations.length > 0 ? pendingRegistrations.map(renderRegistrationCard) : <p className="p-6 text-center text-gray-500">Nenhuma candidatura pendente.</p>}
+                            </CardContent>
+                         </TabsContent>
+                         <TabsContent value="aceitas">
+                             <CardContent className='p-0'>
+                                {acceptedRegistrations.length > 0 ? acceptedRegistrations.map(renderRegistrationCard) : <p className="p-6 text-center text-gray-500">Nenhuma candidatura aceita.</p>}
+                            </CardContent>
+                         </TabsContent>
+                         <TabsContent value="rejeitadas">
+                              <CardContent className='p-0'>
+                                {rejectedRegistrations.length > 0 ? rejectedRegistrations.map(renderRegistrationCard) : <p className="p-6 text-center text-gray-500">Nenhuma candidatura rejeitada.</p>}
+                            </CardContent>
+                         </TabsContent>
+                     </Tabs>
+                </Card>
+            </div>
+        </div>
+    );
+}

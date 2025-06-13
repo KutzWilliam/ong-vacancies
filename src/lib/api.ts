@@ -167,8 +167,8 @@ async function getRegistrationsForVacancy(token: string): Promise<Response> {
 }
 
 async function updateVacancyRegistrationStatus(token: string, registrationId: string, data: UpdateRegistrationStatusData): Promise<Response> {
-  return fetch(`${BASE_URL}/vacancy-registrations/status/${registrationId}`, {
-    method: 'PATCH',
+  return fetch(`${BASE_URL}/vacancy-registrations/${registrationId}/status`, {
+    method: 'PUT',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
@@ -208,6 +208,17 @@ async function updateReport(token: string, data: ReportUpdateData): Promise<Resp
   });
 }
 
+async function createReportForVolunteer(token: string, data: { description: string, volunteers_quantity: number, worked_hours: number, volunteerId: string }): Promise<Response> {
+    return fetch(`${BASE_URL}/reports/volunteer`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+    });
+}
+
 export {
     BASE_URL,
     registerUser,
@@ -225,7 +236,8 @@ export {
     updateVacancyRegistrationStatus,
     createReport,
     getMyReport,
-    updateReport
+    updateReport,
+    createReportForVolunteer,
 };
 export type {
         UserRegisterData,
